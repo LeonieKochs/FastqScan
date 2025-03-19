@@ -5,8 +5,10 @@
 // schreiben Sie eine korrekte Version der Funktion
 
 // if it is out of range ?!
-pub fn calculate_phred(qual: char) -> usize {
-    (qual as u8 - 33) as usize
+// qual is byte, u32 -> 4 bytes is more than we need
+// use u8
+pub fn calculate_phred(qual: u8) -> u8 {
+    (qual- 33) as u8
 }
 
 
@@ -16,14 +18,14 @@ pub fn calculate_phred(qual: char) -> usize {
 
 // String can include weird characters, better taking a sclice of bytes ?!
 
-pub fn read_qual(qual_string: &String)-> f64 {
-    let n = qual_string.len();
-    let mut qual_sum = 0; 
-    for qual in qual_string.chars() { // iterate over the characters of the string
-        let q = calculate_phred(qual);
-        qual_sum +=q
-    }
-    return (qual_sum / n) as f64
+pub fn read_qual(qual_string: &[u8])-> f64 {
+    let n: f64 = qual_string.len() as f64; // taking u8 casting into f64, potential panic!?
+    let mut qual_sum: f64 = 0.0; 
+    for qual in qual_string {
+        let q: u8 = calculate_phred(*qual); //*qual
+        qual_sum +=q as f64 // overflow keep in mind 
+    };
+    return qual_sum / n
 }
 
 
@@ -40,25 +42,34 @@ pub fn avg_err_prob(phred: usize) -> f64 {
 // Geben Sie eine Tabelle aus mit der durchschnittlichen Qualität (Phred-Wert) für jede Position der Reads.
 
 // 1st draft
-pub fn avg_base_quality(reads: Vec<(String, String, String, String)>) -> Vec<usize>{
+pub fn avg_base_quality(reads: Vec<(String, String, String, String)>) -> Vec<f64>{
     
+    // in case reads is empty
+    // -> number_of_reads != 0 (division in map)
+    if reads.is_empty() {
+        return Vec::new();
+    }
+
+    // seperate function or change requirments
     let read_length: usize = reads[0].1.len(); // Annahme: alle Reads haben die gleiche Länge // find alternative!
-    let number_of_reads: usize = reads.len();
+    let number_of_reads: u64  = (reads.len()) as u64;
 
     // vector saving sums of for each position
-    let mut quality_sum: Vec<usize> = vec![0; read_length];
+    let mut quality_sum: Vec<u64> = vec![0; read_length]; 
 
     for read in reads {
-        let qualtiy_string = &read.3; // phred scores in 4th line of read
-        for(i, ch) in qualtiy_string.chars().enumerate(){
-            let phred_value = calculate_phred(ch);
-            quality_sum[i] += phred_value;
+        let qualtiy_string: &[u8] = &read.3.as_bytes(); // phred scores in 4th line of read
+        for(i, qual) in qualtiy_string.iter().enumerate(){
+            let phred_value = calculate_phred(*qual); 
+            quality_sum[i] += phred_value as u64;
         }
     }
     // divide the sums by the number_of_reads
     // quality_sum.iter() iterates over quality_sum vector
     // collect() collects results of map
-    quality_sum.iter().map(|&sum| sum / number_of_reads).collect()
+    // into_iter() owned values
+    // What if number_of_reads are 0?
+    quality_sum.into_iter().map(|sum: u64| sum as f64 / number_of_reads as f64).collect() // change
   
     
 }
@@ -86,7 +97,7 @@ mod test {
             ("@read3".to_string(), "ACGT".to_string(), "+".to_string(), "GGGG".to_string()),  // 38, 38, 38, 38
         ];
 
-        let expected = vec![39, 39, 39, 39];
+        let expected: Vec<f64>  = vec![39.0, 39.0, 39.0, 39.0];
 
         let res = avg_base_quality(test_reads);
 
@@ -104,16 +115,16 @@ mod test {
 
     #[test]
     fn test_read_qual() {
-        let qual_string: String = "!&+".to_string(); //.to_string()
+        let qual_string: &[u8]  = "!&+".as_bytes();
         let expected: f64 = 5.0; 
-        let res = read_qual(&qual_string); // reference: can be large, avoid copying
+        let res = read_qual(qual_string); // reference: can be large, avoid copying
         assert_eq!(expected, res);
     }
     
     #[test]
     fn test_calculate_phred() {
-        let qual: char = '&';
-        let expected:usize =	5; // Phred-Score für das Zeichen '&'
+        let qual: u8 = b'&'; // byte representation
+        let expected:u8 =	5; // Phred-Score für das Zeichen '&'
         let res = calculate_phred(qual);
         assert_eq!(expected, res);
     }
@@ -121,9 +132,9 @@ mod test {
     #[test]
     fn test_calculate_phred_range() {
         for ascii in 33..=126 {  // Alle ASCII-Werte von '!' bis '~'
-            let qual = ascii as u8 as char;
-            let expected = ascii - 33;
-            assert_eq!(calculate_phred(qual), expected as usize);
+            let qual = ascii as u8;
+            let expected = (ascii - 33) as u8;
+            assert_eq!(calculate_phred(qual), expected);
         }
 }
 
@@ -131,9 +142,9 @@ mod test {
     // Alternativ können viele Ergebnisse auf einmal getestet werden:
     #[test]
     fn test_calculate_phred_other() {
-        let tests: Vec<(char, usize)> = vec![
-            ('&', 5),
-            ('+', 10)
+        let tests: Vec<(u8, u8)> = vec![
+            (b'&', 5),
+            (b'+', 10),
         ];
         for test in tests {
             let res = calculate_phred(test.0);
